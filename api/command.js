@@ -9,7 +9,7 @@ export default async function handler(req, res) {
 
   try {
 
-    // ===== Leer body correctamente (Railway fix) =====
+    // ===== Leer body correctamente =====
     let body = req.body;
 
     if (!body) {
@@ -23,14 +23,18 @@ export default async function handler(req, res) {
     console.log("⚡ Update recibido:", body);
 
     if (!body || !body.message) {
-      return res.status(200).send("ok");
+      res.writeHead(200);
+      res.end("ok");
+      return;
     }
 
     const chatId = body.message.chat.id;
     const text = body.message.text?.trim();
 
     if (!text) {
-      return res.status(200).send("ok");
+      res.writeHead(200);
+      res.end("ok");
+      return;
     }
 
     const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -38,7 +42,9 @@ export default async function handler(req, res) {
 
     if (!BOT_TOKEN || !CHAT_ID) {
       console.log("❌ BOT_TOKEN o CHAT_ID no definidos");
-      return res.status(200).send("ok");
+      res.writeHead(200);
+      res.end("ok");
+      return;
     }
 
     // ===== función enviar mensaje =====
@@ -168,13 +174,15 @@ export default async function handler(req, res) {
     }
 
     // ===== respuesta obligatoria =====
-    return res.status(200).send("ok");
+    res.writeHead(200);
+    res.end("ok");
 
   } catch (err) {
 
     console.log("⚠️ Error en command handler:", err);
 
-    return res.status(200).send("ok");
+    res.writeHead(200);
+    res.end("ok");
 
   }
 }
