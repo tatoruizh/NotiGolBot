@@ -5,6 +5,7 @@ import { getMatchesByDate } from "../goalWatcher.js";
 const teamsFile = "./data/teams.json";
 
 export default async function handler(req, res) {
+  // Solo procesamos mensajes de Telegram
   const body = req.body;
   if (!body || !body.message) return res.sendStatus(200);
 
@@ -32,7 +33,7 @@ export default async function handler(req, res) {
     fs.writeFileSync(teamsFile, JSON.stringify([]));
   }
 
-  // COMANDOS
+  // ===== COMANDOS =====
   if (text === "/list") {
     await sendMessage(chatId, "Equipos vigilados:\n" + (teams.length ? teams.join("\n") : "No hay equipos aún"));
   } 
@@ -65,6 +66,6 @@ export default async function handler(req, res) {
     await sendMessage(chatId, "⚽ Partidos de mañana:\n" + matches.join("\n"));
   }
 
-  // Responder siempre OK
+  // Siempre responder 200 OK a Telegram
   res.sendStatus(200);
 }
