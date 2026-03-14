@@ -9,6 +9,7 @@ let sentEvents = JSON.parse(fs.readFileSync("./data/sentGoals.json"));
 
 async function send(text) {
   const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+
   await fetch(url, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
@@ -20,6 +21,7 @@ async function send(text) {
 }
 
 async function checkMatches() {
+
   try {
 
     const res = await fetch(
@@ -27,7 +29,6 @@ async function checkMatches() {
     );
 
     const data = await res.json();
-
     const events = data.events || [];
 
     for (const match of events) {
@@ -37,28 +38,76 @@ async function checkMatches() {
 
       if (!teams.includes(home) && !teams.includes(away)) continue;
 
-      const key = match.id + "_" + match.homeScore.current + "_" + match.awayScore.current;
+      const tournament = match.tournament.name;
+      const minute = match.time?.current || 0;
 
-      if (sentEvents.includes(key)) continue;
+      const homeScore = match.homeScore?.current || 0;
+      const awayScore = match.awayScore?.current || 0;
 
-      sentEvents.push(key);
+      const matchKey = `match_${match.id}`;
+      const goalKey = `goal_${match.id}_${homeScore}_${awayScore}`;
 
-      fs.writeFileSync(
-        "./data/sentGoals.json",
-        JSON.stringify(sentEvents, null, 2)
-      );
+      // INICIO PARTIDO
+      if (!sentEvents.includes(matchKey) && minute <= 1) {
 
-      const score = `${match.homeScore.current} - ${match.awayScore.current}`;
+        sentEvents.push(matchKey);
 
-      await send(
-        `⚽ GOL\n${home} ${score} ${away}`
-      );
+        await send(
+`🟢 INICIO DE PARTIDO
+🏆 ${tournament}
+
+${home} vs ${away}`
+        );
+
+      }
+
+      // GOL
+      if (!sentEvents.includes(goalKey)) {
+
+        sentEvents.push(goalKey);
+
+        await send(
+`⚽ GOOOOOL (${minute}')
+🏆 ${tournament}
+
+${home} ${homeScore} - ${awayScore} ${away}`
+        );
+
+      }
+
+      // FINAL PARTIDO
+      if (match.status?.type === "finished") {
+
+        const finalKey = `final_${match.id}`;
+
+        if (!sentEvents.includes(finalKey)) {
+
+          sentEvents.push(finalKey);
+
+          await send(
+`🔴 FINAL DEL PARTIDO
+🏆 ${tournament}
+
+${home} ${homeScore} - ${awayScore} ${away}`
+          );
+
+        }
+
+      }
 
     }
 
+    fs.writeFileSync(
+      "./data/sentGoals.json",
+      JSON.stringify(sentEvents, null, 2)
+    );
+
   } catch (err) {
-    console.log("Error leyendo SofaScore:", err);
+
+    console.log("Error SofaScore:", err);
+
   }
+
 }
 
-setInterval(checkMatches, 60000);
+setInterval(checkMatches, 45000);
