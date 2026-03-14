@@ -4,7 +4,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node api/command.js"
+    "start": "node index.js"
   },
   "dependencies": {
     "node-fetch": "^3.3.1",
