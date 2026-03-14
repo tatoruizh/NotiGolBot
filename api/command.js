@@ -1,56 +1,56 @@
-// api/command.js
 import fs from "fs";
-import path from "path";
-import fetch from "node-fetch";
+import { getMatchesByDate } from "../goalWatcher.js";
 
-const teamsFile = path.join("data", "teams.json");
-const sentFile = path.join("data", "sentGoals.json");
+const teamsFile = "./data/teams.json";
 
-export default async function commandHandler(req, res) {
-  const message = req.body.message;
-  if (!message) return res.sendStatus(200);
+export default async function handler(req, res) {
+  const body = req.body;
+  if (!body || !body.message) return res.sendStatus(200);
 
-  const chatId = message.chat.id;
-  const text = message.text.trim();
+  const chatId = body.message.chat.id;
+  const text = body.message.text?.trim();
+  if (!text) return res.sendStatus(200);
 
-  // lee equipos
-  let teams = JSON.parse(fs.readFileSync(teamsFile, "utf-8"));
-  
-  if (text.startsWith("/list")) {
-    await sendMessage(chatId, "Equipos vigilados: " + teams.join(", "));
+  async function sendMessage(chatId, text) {
+    const BOT_TOKEN = process.env.BOT_TOKEN;
+    const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text })
+    });
+  }
+
+  // LEER teams.json
+  let teams = JSON.parse(fs.readFileSync(teamsFile));
+
+  if (text === "/list") {
+    await sendMessage(chatId, "Equipos vigilados:\n" + teams.join("\n"));
   } else if (text.startsWith("/add ")) {
-    const team = text.replace("/add ", "").trim();
-    if (!teams.includes(team)) {
-      teams.push(team);
+    const teamToAdd = text.replace("/add ", "").trim();
+    if (!teams.includes(teamToAdd)) {
+      teams.push(teamToAdd);
       fs.writeFileSync(teamsFile, JSON.stringify(teams, null, 2));
-      await sendMessage(chatId, `Equipo agregado: ${team}`);
+      await sendMessage(chatId, `${teamToAdd} añadido a la lista`);
     } else {
-      await sendMessage(chatId, `El equipo ya está agregado: ${team}`);
+      await sendMessage(chatId, `${teamToAdd} ya estaba en la lista`);
     }
   } else if (text.startsWith("/remove ")) {
-    const team = text.replace("/remove ", "").trim();
-    if (teams.includes(team)) {
-      teams = teams.filter(t => t !== team);
-      fs.writeFileSync(teamsFile, JSON.stringify(teams, null, 2));
-      await sendMessage(chatId, `Equipo eliminado: ${team}`);
-    } else {
-      await sendMessage(chatId, `El equipo no estaba en la lista: ${team}`);
-    }
+    const teamToRemove = text.replace("/remove ", "").trim();
+    teams = teams.filter(t => t !== teamToRemove);
+    fs.writeFileSync(teamsFile, JSON.stringify(teams, null, 2));
+    await sendMessage(chatId, `${teamToRemove} eliminado de la lista`);
+  } else if (text === "/today") {
+    const today = new Date().toISOString().split("T")[0];
+    const matches = await getMatchesByDate(today);
+    await sendMessage(chatId, "⚽ Partidos de hoy:\n" + matches.join("\n"));
+  } else if (text === "/tomorrow") {
+    const tomorrowDate = new Date();
+    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+    const tomorrow = tomorrowDate.toISOString().split("T")[0];
+    const matches = await getMatchesByDate(tomorrow);
+    await sendMessage(chatId, "⚽ Partidos de mañana:\n" + matches.join("\n"));
   }
 
   res.sendStatus(200);
-}
-
-import { getMatchesByDate } from "../goalWatcher.js";
-
-else if (text === "/today") {
-  const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
-  const matches = await getMatchesByDate(today);
-  await sendMessage(chatId, `⚽ Partidos de hoy:\n${matches.join("\n")}`);
-} else if (text === "/tomorrow") {
-  const tomorrowDate = new Date();
-  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-  const tomorrow = tomorrowDate.toISOString().split("T")[0];
-  const matches = await getMatchesByDate(tomorrow);
-  await sendMessage(chatId, `⚽ Partidos de mañana:\n${matches.join("\n")}`);
 }
