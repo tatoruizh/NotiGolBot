@@ -5,22 +5,12 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node index.js"
+    "start": "node index.js"
   },
-  "keywords": ["telegram", "bot", "sofascore", "football", "live"],
-  "author": "Tato Ruiz",
-  "license": "MIT",
   "dependencies": {
     "node-fetch": "^3.3.2"
   },
   "engines": {
     "node": ">=18.0.0"
-  },
-  "files": [
-    "index.js",
-    "goalWatcher.js",
-    "api/",
-    "data/"
-  ]
+  }
 }
