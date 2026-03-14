@@ -86,18 +86,13 @@ setInterval(checkMatches, 45000);
 // Función para obtener partidos por fecha (para /today y /tomorrow)
 export async function getMatchesByDate(dateStr) {
   try {
-    // Consultamos próximos 50 partidos para asegurar que incluya los de hoy o mañana
-    const res = await fetch("https://api.sofascore.com/api/v1/sport/football/events/next/50");
+    // SofaScore: partidos programados para la fecha exacta
+    const res = await fetch(`https://api.sofascore.com/api/v1/sport/football/scheduled/${dateStr}`);
     const data = await res.json();
     const events = data.events || [];
 
     const matches = events
-      .filter(m => {
-        // Formatear la fecha de inicio del partido
-        const matchDate = new Date(m.startingAt).toISOString().split("T")[0];
-        return matchDate === dateStr &&
-               (teams.includes(m.homeTeam.name) || teams.includes(m.awayTeam.name));
-      })
+      .filter(m => teams.includes(m.homeTeam.name) || teams.includes(m.awayTeam.name))
       .map(m => {
         const localTime = new Date(m.startingAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         return `${m.homeTeam.name} vs ${m.awayTeam.name} — ${m.tournament.name} — ${localTime}`;
