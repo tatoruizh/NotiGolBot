@@ -41,14 +41,16 @@ export default async function commandHandler(req, res) {
   res.sendStatus(200);
 }
 
-// Función para enviar mensaje a Telegram
-async function sendMessage(chatId, text) {
-  const token = process.env.BOT_TOKEN;
-  await fetch(`https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(text)}`);
-}
+import { getMatchesByDate } from "../goalWatcher.js";
 
 else if (text === "/today") {
-  await sendMessage(chatId, "⚽ Partidos de hoy:\n- Revisa SofaScore o implementa API diaria para tus equipos");
+  const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+  const matches = await getMatchesByDate(today);
+  await sendMessage(chatId, `⚽ Partidos de hoy:\n${matches.join("\n")}`);
 } else if (text === "/tomorrow") {
-  await sendMessage(chatId, "⚽ Partidos de mañana:\n- Revisa SofaScore o implementa API diaria para tus equipos");
+  const tomorrowDate = new Date();
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const tomorrow = tomorrowDate.toISOString().split("T")[0];
+  const matches = await getMatchesByDate(tomorrow);
+  await sendMessage(chatId, `⚽ Partidos de mañana:\n${matches.join("\n")}`);
 }
