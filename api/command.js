@@ -6,183 +6,78 @@ import { getMatchesByDate } from "../goalWatcher.js";
 const teamsFile = path.join(process.cwd(), "data", "teams.json");
 
 export default async function handler(req, res) {
-
   try {
-
-    // ===== Leer body correctamente =====
+    // ===== Leer body correctamente (Railway fix) =====
     let body = req.body;
-
     if (!body) {
       let raw = "";
-      for await (const chunk of req) {
-        raw += chunk;
-      }
+      for await (const chunk of req) raw += chunk;
       body = JSON.parse(raw);
     }
 
-    console.log("⚡ Update recibido:", body);
-
-    if (!body || !body.message) {
-      res.writeHead(200);
-      res.end("ok");
-      return;
-    }
+    if (!body?.message) return res.status(200).send("ok");
 
     const chatId = body.message.chat.id;
     const text = body.message.text?.trim();
-
-    if (!text) {
-      res.writeHead(200);
-      res.end("ok");
-      return;
-    }
+    if (!text) return res.status(200).send("ok");
 
     const BOT_TOKEN = process.env.BOT_TOKEN;
-    const CHAT_ID = process.env.CHAT_ID;
+    if (!BOT_TOKEN) return res.status(200).send("ok");
 
-    if (!BOT_TOKEN || !CHAT_ID) {
-      console.log("❌ BOT_TOKEN o CHAT_ID no definidos");
-      res.writeHead(200);
-      res.end("ok");
-      return;
-    }
-
-    // ===== función enviar mensaje =====
+    // ===== Función enviar mensaje =====
     async function sendMessage(chatId, msg) {
-
       try {
-
         await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: msg
-          })
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: chatId, text: msg })
         });
-
       } catch (err) {
-
         console.log("Error enviando mensaje:", err);
-
       }
     }
 
-    // ===== leer teams.json =====
+    // ===== Leer teams.json =====
     let teams = [];
-
     try {
-
-      if (fs.existsSync(teamsFile)) {
-        teams = JSON.parse(fs.readFileSync(teamsFile));
-      } else {
-        fs.writeFileSync(teamsFile, JSON.stringify([]));
-      }
-
-    } catch (err) {
-
-      console.log("Error leyendo teams.json:", err);
+      if (fs.existsSync(teamsFile)) teams = JSON.parse(fs.readFileSync(teamsFile));
+      else fs.writeFileSync(teamsFile, JSON.stringify([]));
+    } catch {
+      fs.writeFileSync(teamsFile, JSON.stringify([]));
       teams = [];
-
     }
 
     // ===== COMANDOS =====
-
-    // LIST
     if (text === "/list") {
-
-      const msg =
-        "📋 Equipos vigilados:\n\n" +
-        (teams.length ? teams.join("\n") : "No hay equipos aún");
-
+      const msg = "📋 Equipos vigilados:\n" + (teams.length ? teams.join("\n") : "No hay equipos aún");
       await sendMessage(chatId, msg);
-
     }
-
-    // ADD
     else if (text.startsWith("/add ")) {
-
       const teamToAdd = text.replace("/add ", "").trim();
-
       if (!teams.includes(teamToAdd)) {
-
         teams.push(teamToAdd);
-
-        fs.writeFileSync(
-          teamsFile,
-          JSON.stringify(teams, null, 2)
-        );
-
+        fs.writeFileSync(teamsFile, JSON.stringify(teams, null, 2));
         await sendMessage(chatId, `✅ ${teamToAdd} añadido`);
-
-      } else {
-
-        await sendMessage(chatId, `⚠️ ${teamToAdd} ya estaba en la lista`);
-
-      }
-
+      } else await sendMessage(chatId, `⚠️ ${teamToAdd} ya estaba en la lista`);
     }
-
-    // REMOVE
     else if (text.startsWith("/remove ")) {
-
       const teamToRemove = text.replace("/remove ", "").trim();
-
       teams = teams.filter(t => t !== teamToRemove);
-
-      fs.writeFileSync(
-        teamsFile,
-        JSON.stringify(teams, null, 2)
-      );
-
+      fs.writeFileSync(teamsFile, JSON.stringify(teams, null, 2));
       await sendMessage(chatId, `🗑️ ${teamToRemove} eliminado`);
+    }
+    else if (text === "/today" || text === "/tomorrow") {
+      const date = new Date();
+      if (text === "/tomorrow") date.setDate(date.getDate() + 1);
+      const dateStr = date.toISOString().split("T")[0];
 
+      const matches = await getMatchesByDate(dateStr);
+      await sendMessage(chatId, `⚽ Partidos ${text === "/today" ? "de hoy" : "de mañana"}:\n\n` + matches.join("\n"));
     }
 
-    // TODAY
-    else if (text === "/today") {
-
-      const today = new Date().toISOString().split("T")[0];
-
-      const matches = await getMatchesByDate(today);
-
-      await sendMessage(
-        chatId,
-        "⚽ Partidos de hoy:\n\n" + matches.join("\n")
-      );
-
-    }
-
-    // TOMORROW
-    else if (text === "/tomorrow") {
-
-      const tomorrowDate = new Date();
-
-      tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-
-      const tomorrow = tomorrowDate.toISOString().split("T")[0];
-
-      const matches = await getMatchesByDate(tomorrow);
-
-      await sendMessage(
-        chatId,
-        "⚽ Partidos de mañana:\n\n" + matches.join("\n")
-      );
-
-    }
-
-    // ===== respuesta obligatoria =====
-    res.writeHead(200);
-    res.end("ok");
-
+    return res.status(200).send("ok");
   } catch (err) {
-
     console.log("⚠️ Error en command handler:", err);
-
-    res.writeHead(200);
-    res.end("ok");
-
+    return res.status(200).send("ok");
   }
 }
