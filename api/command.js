@@ -1,9 +1,8 @@
 import fs from "fs";
+import path from "path";
 import fetch from "node-fetch";
 import { getMatchesByDate } from "../goalWatcher.js";
-import path from "path";
 
-// Archivos JSON
 const dataDir = path.join(process.cwd(), "data");
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
 
@@ -14,15 +13,16 @@ if (!fs.existsSync(teamsFile)) fs.writeFileSync(teamsFile, JSON.stringify([]));
 
 export default async function handler(req, res) {
   try {
-    // Validar body
-    const body = req.body;
+    // Parse seguro del body
+    const body = req.body || (await req.json());
+    console.log("⚡ Update recibido:", body);
+
     if (!body || !body.message) return res.sendStatus(200);
 
     const chatId = body.message.chat.id;
     const text = body.message.text?.trim();
     if (!text) return res.sendStatus(200);
 
-    // Variables de entorno
     const BOT_TOKEN = process.env.BOT_TOKEN;
     const CHAT_ID = process.env.CHAT_ID;
 
@@ -31,21 +31,23 @@ export default async function handler(req, res) {
       return res.sendStatus(500);
     }
 
-    // Función para enviar mensaje
+    // Función para enviar mensaje a Telegram
     async function sendMessage(chatId, msg) {
       try {
         const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
-        await fetch(url, {
+        const resp = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ chat_id: chatId, text: msg })
         });
+        const data = await resp.json();
+        if (!data.ok) console.log("⚠️ Error Telegram:", data);
       } catch (err) {
         console.log("⚠️ Error enviando mensaje:", err);
       }
     }
 
-    // Leer teams.json
+    // Leer equipos vigilados
     let teams = [];
     try {
       teams = JSON.parse(fs.readFileSync(teamsFile));
@@ -81,6 +83,7 @@ export default async function handler(req, res) {
       try {
         matches = await getMatchesByDate(today);
       } catch (err) {
+        console.log("⚠️ Error /today:", err);
         matches = ["⚠️ Error al consultar SofaScore"];
       }
       await sendMessage(chatId, "⚽ Partidos de hoy:\n" + matches.join("\n"));
@@ -93,15 +96,16 @@ export default async function handler(req, res) {
       try {
         matches = await getMatchesByDate(tomorrow);
       } catch (err) {
+        console.log("⚠️ Error /tomorrow:", err);
         matches = ["⚠️ Error al consultar SofaScore"];
       }
       await sendMessage(chatId, "⚽ Partidos de mañana:\n" + matches.join("\n"));
     }
 
-    // Responder 200 siempre
+    // Responder 200 OK siempre
     res.sendStatus(200);
   } catch (err) {
-    console.log("⚠️ Error en /api/command:", err);
+    console.log("⚠️ Error en handler:", err);
     res.sendStatus(500);
   }
 }
