@@ -46,3 +46,9 @@ async function sendMessage(chatId, text) {
   const token = process.env.BOT_TOKEN;
   await fetch(`https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(text)}`);
 }
+
+else if (text === "/today") {
+  await sendMessage(chatId, "⚽ Partidos de hoy:\n- Revisa SofaScore o implementa API diaria para tus equipos");
+} else if (text === "/tomorrow") {
+  await sendMessage(chatId, "⚽ Partidos de mañana:\n- Revisa SofaScore o implementa API diaria para tus equipos");
+}
