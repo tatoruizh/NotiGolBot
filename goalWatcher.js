@@ -4,8 +4,8 @@ import path from "path";
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const CHAT_ID = process.env.CHAT_ID;
+const TSDB_KEY = process.env.THESPORTSDB_KEY;
 
-// Archivos JSON
 const teamsFile = path.join(process.cwd(), "data", "teams.json");
 const sentGoalsFile = path.join(process.cwd(), "data/sentGoals.json");
 
@@ -27,7 +27,7 @@ try {
   sentEvents = [];
 }
 
-// ===== función para enviar mensaje a Telegram =====
+// Enviar mensaje a Telegram
 async function send(text) {
   if (!BOT_TOKEN || !CHAT_ID) return;
 
@@ -42,86 +42,71 @@ async function send(text) {
   }
 }
 
-// ===== revisar partidos en directo cada 45s =====
+// Revisar partidos en directo
 export async function checkMatches() {
   try {
-    const res = await fetch("https://api.sofascore.com/api/v1/sport/football/events/live");
+    if (!TSDB_KEY) return;
+
+    const res = await fetch(`https://www.thesportsdb.com/api/v1/json/${TSDB_KEY}/eventslast.php?id=4328`); 
+    // 4328 = ejemplo de liga, se puede hacer dinámico por equipo
     const data = await res.json();
-    const events = data.events || [];
+    const events = data.results || [];
 
     for (const match of events) {
-      const home = match.homeTeam.name;
-      const away = match.awayTeam.name;
+      const home = match.strHomeTeam;
+      const away = match.strAwayTeam;
 
-      // Filtrar solo equipos vigilados
       if (!teams.includes(home) && !teams.includes(away)) continue;
 
-      const tournament = match.tournament.name;
-      const minute = match.time?.current || 0;
-      const homeScore = match.homeScore?.current || 0;
-      const awayScore = match.awayScore?.current || 0;
+      const homeScore = match.intHomeScore || 0;
+      const awayScore = match.intAwayScore || 0;
+      const matchId = match.idEvent;
 
-      const matchKey = `match_${match.id}`;
-      const finalKey = `final_${match.id}`;
-      const goalKey = `goal_${match.id}_${homeScore}_${awayScore}`;
+      const goalKey = `goal_${matchId}_${homeScore}_${awayScore}`;
 
-      // 🟢 INICIO PARTIDO
-      if (!sentEvents.includes(matchKey) && minute <= 1) {
-        sentEvents.push(matchKey);
-        await send(`🟢 INICIO DE PARTIDO\n🏆 ${tournament}\n\n${home} vs ${away}`);
-      }
-
-      // ⚽ GOLES
-      if (!sentEvents.includes(goalKey) && match.events) {
-        const goals = match.events.filter(e => e.type === "goal" && !e.cancelled);
-        const lastGoal = goals[goals.length - 1];
-        if (lastGoal) {
-          const scorer = lastGoal.player?.name || "Desconocido";
-          const isPenalty = lastGoal.details?.type === "penalty" ? " (P)" : "";
-          const goalText = `⚽ GOOOOOL (${minute}')${isPenalty}\n🏆 ${tournament}\n${scorer}\n\n${home} ${homeScore} - ${awayScore} ${away}`;
-          sentEvents.push(goalKey);
-          await send(goalText);
-        }
-      }
-
-      // 🔴 FINAL PARTIDO
-      if (match.status?.type === "finished" && !sentEvents.includes(finalKey)) {
-        sentEvents.push(finalKey);
-        await send(`🔴 FINAL DEL PARTIDO\n🏆 ${tournament}\n\n${home} ${homeScore} - ${awayScore} ${away}`);
+      if (!sentEvents.includes(goalKey)) {
+        sentEvents.push(goalKey);
+        const msg = `⚽ Resultado actualizado\n${home} ${homeScore} - ${awayScore} ${away}`;
+        await send(msg);
       }
     }
 
     fs.writeFileSync(sentGoalsFile, JSON.stringify(sentEvents, null, 2));
+
   } catch (err) {
-    console.log("Error SofaScore:", err);
+    console.log("Error TheSportsDB:", err);
   }
 }
 
-setInterval(checkMatches, 45000);
+setInterval(checkMatches, 60000); // cada minuto
 
-// ===== obtener partidos programados por fecha para /today y /tomorrow =====
+// Obtener partidos programados por fecha
 export async function getMatchesByDate(dateStr) {
   try {
-    // SofaScore usa endpoint de partidos programados por fecha exacta
-    const res = await fetch(`https://api.sofascore.com/api/v1/sport/football/events/${dateStr}`);
+    if (!TSDB_KEY) return ["No se puede consultar, falta TSDB_KEY"];
+
+    const res = await fetch(
+      `https://www.thesportsdb.com/api/v1/json/${TSDB_KEY}/eventsday.php?d=${dateStr}&l=English_Premier_League`
+      // l=liga, puedes parametrizar o iterar sobre equipos
+    );
     const data = await res.json();
     const events = data.events || [];
 
     const matches = events
-      .filter(m => teams.includes(m.homeTeam.name) || teams.includes(m.awayTeam.name))
+      .filter(m => teams.includes(m.strHomeTeam) || teams.includes(m.strAwayTeam))
       .map(m => {
-        const localTime = new Date(m.startingAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        return `${m.homeTeam.name} vs ${m.awayTeam.name} — ${m.tournament.name} — ${localTime}`;
+        const localTime = m.strTime || "TBD";
+        return `${m.strHomeTeam} vs ${m.strAwayTeam} — ${m.strLeague} — ${localTime}`;
       });
 
     return matches.length ? matches : ["No hay partidos para tus equipos"];
   } catch (err) {
-    console.log("Error SofaScore /getMatchesByDate:", err);
-    return ["Error al consultar SofaScore"];
+    console.log("Error TheSportsDB /getMatchesByDate:", err);
+    return ["Error al consultar TheSportsDB"];
   }
 }
 
-// ===== guardar sentGoals.json al cerrar proceso =====
+// Guardar sentGoals.json al cerrar
 function saveSentEvents() {
   fs.writeFileSync(sentGoalsFile, JSON.stringify(sentEvents, null, 2));
 }
