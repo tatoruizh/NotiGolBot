@@ -1,20 +1,16 @@
 {
   "name": "notigolbot",
   "version": "1.0.0",
-  "description": "Bot de Telegram para alertas de goles en directo",
+  "description": "Bot de Telegram para alertas de goles",
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node index.js"
+    "start": "node index.js"
   },
-  "keywords": ["telegram", "bot", "football", "soccer", "alerts"],
-  "author": "Tato Ruiz",
-  "license": "MIT",
   "dependencies": {
     "node-fetch": "^3.3.2"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18"
   }
 }
