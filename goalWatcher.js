@@ -5,7 +5,15 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const CHAT_ID = process.env.CHAT_ID;
 
 const teams = JSON.parse(fs.readFileSync("./data/teams.json"));
-let sentEvents = JSON.parse(fs.readFileSync("./data/sentGoals.json"));
+
+// Cargar sentGoals.json o crear vacío si no existe
+let sentEvents = [];
+try {
+  sentEvents = JSON.parse(fs.readFileSync("./data/sentGoals.json"));
+} catch (err) {
+  console.log("sentGoals.json no existe o está vacío, se creará uno nuevo");
+  fs.writeFileSync("./data/sentGoals.json", JSON.stringify([]));
+}
 
 // Función para enviar mensaje a Telegram
 async function send(text) {
@@ -103,3 +111,12 @@ export async function getMatchesByDate(dateStr) {
     return ["Error al consultar SofaScore"];
   }
 }
+
+// Guardar sentGoals.json al cerrar el proceso
+function saveSentEvents() {
+  fs.writeFileSync("./data/sentGoals.json", JSON.stringify(sentEvents, null, 2));
+}
+
+process.on("exit", saveSentEvents);
+process.on("SIGINT", () => { saveSentEvents(); process.exit(); });
+process.on("SIGTERM", () => { saveSentEvents(); process.exit(); });
