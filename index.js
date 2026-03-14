@@ -1,14 +1,37 @@
-import express from "express";
-import commandHandler from "./api/command.js";
-import "./goalWatcher.js"; // activa el watcher automático de goles
+import "./goalWatcher.js";
+import fetch from "node-fetch";
 
-const app = express();
-app.use(express.json());
+const BOT_TOKEN = process.env.BOT_TOKEN;
 
-// Endpoint para comandos de Telegram
-app.post("/api/command", commandHandler);
+// Registrar comandos en Telegram
+async function setCommands() {
+  const commands = [
+    { command: "list", description: "Lista los equipos vigilados" },
+    { command: "add", description: "Añadir un equipo a la lista" },
+    { command: "remove", description: "Eliminar un equipo de la lista" },
+    { command: "today", description: "Mostrar partidos de hoy" },
+    { command: "tomorrow", description: "Mostrar partidos de mañana" }
+  ];
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log("Bot running on port", PORT);
-});
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/setMyCommands`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ commands })
+    });
+
+    const data = await res.json();
+    if (data.ok) {
+      console.log("Comandos registrados ✅");
+    } else {
+      console.log("Error registrando comandos:", data);
+    }
+  } catch (err) {
+    console.log("Error al registrar comandos:", err);
+  }
+}
+
+// Ejecutar al iniciar
+setCommands();
+
+console.log("Bot iniciado y goalWatcher activo ✅");
