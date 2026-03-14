@@ -1,5 +1,6 @@
 import express from "express";
 import commandHandler from "./api/command.js";
+import "./goalWatcher.js";
 
 const app = express();
 app.use(express.json());
