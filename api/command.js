@@ -1,19 +1,12 @@
 import fs from "fs";
 import path from "path";
 import fetch from "node-fetch";
-import { getMatchesByDate } from "../goalWatcher.js";
+import { getMatchesByDate, teams as globalTeams } from "../goalWatcher.js";
 
-const dataDir = path.join(process.cwd(), "data");
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
-
-const teamsFile = path.join(dataDir, "teams.json");
-
-// Inicializar teams.json si no existe
-if (!fs.existsSync(teamsFile)) fs.writeFileSync(teamsFile, JSON.stringify([]));
+const teamsFile = path.join(process.cwd(), "data", "teams.json");
 
 export default async function handler(req, res) {
   try {
-    // Parse seguro del body
     const body = req.body || (await req.json());
     console.log("⚡ Update recibido:", body);
 
@@ -26,38 +19,29 @@ export default async function handler(req, res) {
     const BOT_TOKEN = process.env.BOT_TOKEN;
     const CHAT_ID = process.env.CHAT_ID;
 
-    if (!BOT_TOKEN || !CHAT_ID) {
-      console.log("⚠️ BOT_TOKEN o CHAT_ID no definidos");
-      return res.sendStatus(500);
-    }
+    if (!BOT_TOKEN || !CHAT_ID) return res.sendStatus(500);
 
-    // Función para enviar mensaje a Telegram
     async function sendMessage(chatId, msg) {
       try {
-        const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
-        const resp = await fetch(url, {
+        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ chat_id: chatId, text: msg })
         });
-        const data = await resp.json();
-        if (!data.ok) console.log("⚠️ Error Telegram:", data);
       } catch (err) {
-        console.log("⚠️ Error enviando mensaje:", err);
+        console.log("Error enviando mensaje:", err);
       }
     }
 
-    // Leer equipos vigilados
     let teams = [];
     try {
       teams = JSON.parse(fs.readFileSync(teamsFile));
-    } catch (err) {
-      console.log("⚠️ Error leyendo teams.json:", err);
+    } catch {
       fs.writeFileSync(teamsFile, JSON.stringify([]));
       teams = [];
     }
 
-    // ===== COMANDOS =====
+    // COMANDOS
     if (text === "/list") {
       await sendMessage(chatId, "📋 Equipos vigilados:\n" + (teams.length ? teams.join("\n") : "No hay equipos aún"));
     } 
@@ -66,43 +50,30 @@ export default async function handler(req, res) {
       if (!teams.includes(teamToAdd)) {
         teams.push(teamToAdd);
         fs.writeFileSync(teamsFile, JSON.stringify(teams, null, 2));
-        await sendMessage(chatId, `✅ ${teamToAdd} añadido a la lista`);
+        await sendMessage(chatId, `✅ ${teamToAdd} añadido`);
       } else {
-        await sendMessage(chatId, `⚠️ ${teamToAdd} ya estaba en la lista`);
+        await sendMessage(chatId, `⚠️ ${teamToAdd} ya estaba`);
       }
     } 
     else if (text.startsWith("/remove ")) {
       const teamToRemove = text.replace("/remove ", "").trim();
       teams = teams.filter(t => t !== teamToRemove);
       fs.writeFileSync(teamsFile, JSON.stringify(teams, null, 2));
-      await sendMessage(chatId, `🗑️ ${teamToRemove} eliminado de la lista`);
+      await sendMessage(chatId, `🗑️ ${teamToRemove} eliminado`);
     } 
     else if (text === "/today") {
       const today = new Date().toISOString().split("T")[0];
-      let matches = [];
-      try {
-        matches = await getMatchesByDate(today);
-      } catch (err) {
-        console.log("⚠️ Error /today:", err);
-        matches = ["⚠️ Error al consultar SofaScore"];
-      }
+      const matches = await getMatchesByDate(today);
       await sendMessage(chatId, "⚽ Partidos de hoy:\n" + matches.join("\n"));
     } 
     else if (text === "/tomorrow") {
       const tomorrowDate = new Date();
       tomorrowDate.setDate(tomorrowDate.getDate() + 1);
       const tomorrow = tomorrowDate.toISOString().split("T")[0];
-      let matches = [];
-      try {
-        matches = await getMatchesByDate(tomorrow);
-      } catch (err) {
-        console.log("⚠️ Error /tomorrow:", err);
-        matches = ["⚠️ Error al consultar SofaScore"];
-      }
+      const matches = await getMatchesByDate(tomorrow);
       await sendMessage(chatId, "⚽ Partidos de mañana:\n" + matches.join("\n"));
     }
 
-    // Responder 200 OK siempre
     res.sendStatus(200);
   } catch (err) {
     console.log("⚠️ Error en handler:", err);
