@@ -1,28 +1,61 @@
 import fetch from "node-fetch";
 import fs from "fs";
+import path from "path";
 
+// Variables de entorno
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const CHAT_ID = process.env.CHAT_ID;
 
-const teams = JSON.parse(fs.readFileSync("./data/teams.json"));
+if (!BOT_TOKEN || !CHAT_ID) {
+  console.log("⚠️ BOT_TOKEN o CHAT_ID no definidos. El bot no enviará mensajes.");
+}
 
-// Cargar sentGoals.json o crear vacío si no existe
+// Carpetas y archivos
+const dataDir = path.resolve("./data");
+if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
+
+const teamsFile = path.join(dataDir, "teams.json");
+const sentGoalsFile = path.join(dataDir, "sentGoals.json");
+
+// Cargar equipos
+let teams = [];
+try {
+  if (fs.existsSync(teamsFile)) {
+    teams = JSON.parse(fs.readFileSync(teamsFile));
+  } else {
+    fs.writeFileSync(teamsFile, JSON.stringify([]));
+  }
+} catch (err) {
+  console.log("Error leyendo teams.json, se creará uno nuevo:", err);
+  fs.writeFileSync(teamsFile, JSON.stringify([]));
+}
+
+// Cargar sentGoals.json
 let sentEvents = [];
 try {
-  sentEvents = JSON.parse(fs.readFileSync("./data/sentGoals.json"));
+  if (fs.existsSync(sentGoalsFile)) {
+    sentEvents = JSON.parse(fs.readFileSync(sentGoalsFile));
+  } else {
+    fs.writeFileSync(sentGoalsFile, JSON.stringify([]));
+  }
 } catch (err) {
-  console.log("sentGoals.json no existe o está vacío, se creará uno nuevo");
-  fs.writeFileSync("./data/sentGoals.json", JSON.stringify([]));
+  console.log("Error leyendo sentGoals.json, se creará uno nuevo:", err);
+  fs.writeFileSync(sentGoalsFile, JSON.stringify([]));
 }
 
 // Función para enviar mensaje a Telegram
 async function send(text) {
-  const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
-  await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: CHAT_ID, text })
-  });
+  if (!BOT_TOKEN || !CHAT_ID) return;
+  try {
+    const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: CHAT_ID, text })
+    });
+  } catch (err) {
+    console.log("Error enviando mensaje a Telegram:", err);
+  }
 }
 
 // Revisar partidos en directo y enviar alertas
@@ -73,20 +106,21 @@ export async function checkMatches() {
       }
     }
 
-    fs.writeFileSync("./data/sentGoals.json", JSON.stringify(sentEvents, null, 2));
+    fs.writeFileSync(sentGoalsFile, JSON.stringify(sentEvents, null, 2));
 
   } catch (err) {
     console.log("Error SofaScore:", err);
   }
 }
 
-// Revisar automáticamente cada 45 segundos
-setInterval(checkMatches, 45000);
+// Revisar automáticamente cada 45 segundos solo si BOT_TOKEN y CHAT_ID están definidos
+if (BOT_TOKEN && CHAT_ID) {
+  setInterval(checkMatches, 45000);
+}
 
 // Función para obtener partidos por fecha (para /today y /tomorrow)
 export async function getMatchesByDate(dateStr) {
   try {
-    // SofaScore: partidos programados para la fecha exacta
     const res = await fetch(`https://api.sofascore.com/api/v1/sport/football/scheduled/${dateStr}`);
     const data = await res.json();
     const events = data.events || [];
@@ -109,7 +143,11 @@ export async function getMatchesByDate(dateStr) {
 
 // Guardar sentGoals.json al cerrar el proceso
 function saveSentEvents() {
-  fs.writeFileSync("./data/sentGoals.json", JSON.stringify(sentEvents, null, 2));
+  try {
+    fs.writeFileSync(sentGoalsFile, JSON.stringify(sentEvents, null, 2));
+  } catch (err) {
+    console.log("Error guardando sentGoals.json al cerrar:", err);
+  }
 }
 
 process.on("exit", saveSentEvents);
