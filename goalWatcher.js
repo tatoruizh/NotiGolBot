@@ -82,3 +82,28 @@ async function checkMatches() {
 
 // Revisar partidos en vivo cada 45 segundos
 setInterval(checkMatches, 45000);
+
+import fetch from "node-fetch";
+
+export async function getMatchesByDate(date) {
+  try {
+    // SofaScore API para eventos del día
+    const res = await fetch(`https://api.sofascore.com/api/v1/sport/football/events/${date}`);
+    const data = await res.json();
+    const events = data.events || [];
+
+    // Filtrar solo tus equipos
+    const matches = events.filter(
+      m => teams.includes(m.homeTeam.name) || teams.includes(m.awayTeam.name)
+    ).map(m => {
+      return `${m.homeTeam.name} vs ${m.awayTeam.name} — ${m.tournament.name} — ${m.time?.startingAt || "Hora desconocida"}`;
+    });
+
+    if (matches.length === 0) return ["No hay partidos para tus equipos"];
+    return matches;
+
+  } catch (err) {
+    console.log("Error al obtener partidos por fecha:", err);
+    return ["Error al consultar SofaScore"];
+  }
+}
