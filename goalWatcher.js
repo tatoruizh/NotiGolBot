@@ -7,7 +7,7 @@ const CHAT_ID = process.env.CHAT_ID;
 
 // Archivos JSON
 const teamsFile = path.join(process.cwd(), "data", "teams.json");
-const sentGoalsFile = path.join(process.cwd(), "data", "sentGoals.json");
+const sentGoalsFile = path.join(process.cwd(), "data/sentGoals.json");
 
 // Cargar equipos
 let teams = [];
@@ -99,31 +99,24 @@ export async function checkMatches() {
 
 setInterval(checkMatches, 45000);
 
-// ===== obtener partidos por fecha para /today y /tomorrow =====
+// ===== obtener partidos programados por fecha para /today y /tomorrow =====
 export async function getMatchesByDate(dateStr) {
   try {
-    const startDate = new Date(dateStr + "T00:00:00Z").getTime();
-    const endDate = new Date(dateStr + "T23:59:59Z").getTime();
-
-    const res = await fetch("https://api.sofascore.com/api/v1/sport/football/events/live");
+    // SofaScore usa endpoint de partidos programados por fecha exacta
+    const res = await fetch(`https://api.sofascore.com/api/v1/sport/football/events/${dateStr}`);
     const data = await res.json();
     const events = data.events || [];
 
     const matches = events
-      .filter(m => {
-        const startTime = new Date(m.startingAt).getTime();
-        return startTime >= startDate && startTime <= endDate;
-      })
       .filter(m => teams.includes(m.homeTeam.name) || teams.includes(m.awayTeam.name))
       .map(m => {
         const localTime = new Date(m.startingAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         return `${m.homeTeam.name} vs ${m.awayTeam.name} — ${m.tournament.name} — ${localTime}`;
       });
 
-    if (matches.length === 0) return ["No hay partidos para tus equipos"];
-    return matches;
+    return matches.length ? matches : ["No hay partidos para tus equipos"];
   } catch (err) {
-    console.log("Error al obtener partidos por fecha:", err);
+    console.log("Error SofaScore /getMatchesByDate:", err);
     return ["Error al consultar SofaScore"];
   }
 }
