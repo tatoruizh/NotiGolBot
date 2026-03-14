@@ -1,8 +1,8 @@
 {
- "crons":[
-  {
-   "path":"/api/checkGoals",
-   "schedule":"*/1 * * * *"
-  }
- ]
+  "crons": [
+    {
+      "path": "/api/checkGoals",
+      "schedule": "*/1 * * * *"
+    }
+  ]
 }
