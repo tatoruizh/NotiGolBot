@@ -2,17 +2,15 @@ import fetch from "node-fetch";
 import fs from "fs";
 import path from "path";
 
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const CHAT_ID = process.env.CHAT_ID;
-const TSDB_KEY = process.env.THESPORTSDB_KEY;
+const dataDir = path.join(process.cwd(), "data");
 
-const teamsFile = path.join(process.cwd(), "data", "teams.json");
-const sentGoalsFile = path.join(process.cwd(), "data/sentGoals.json");
+// Archivos JSON
+export const teamsFile = path.join(dataDir, "teams.json");
+export const sentGoalsFile = path.join(dataDir, "sentGoals.json");
+export const alertedFile = path.join(dataDir, "alertedMatches.json");
 
-// ==========================
-// Cargar equipos vigilados
-// ==========================
-let teams = [];
+// Cargar equipos
+export let teams = [];
 try {
   teams = JSON.parse(fs.readFileSync(teamsFile));
 } catch {
@@ -20,10 +18,8 @@ try {
   teams = [];
 }
 
-// ==========================
-// Cargar goles enviados
-// ==========================
-let sentEvents = [];
+// Cargar sentGoals.json
+export let sentEvents = [];
 try {
   sentEvents = JSON.parse(fs.readFileSync(sentGoalsFile));
 } catch {
@@ -31,11 +27,27 @@ try {
   sentEvents = [];
 }
 
-// ==========================
+// Cargar alertedMatches.json
+export let alertedMatches = [];
+try {
+  alertedMatches = JSON.parse(fs.readFileSync(alertedFile));
+} catch {
+  fs.writeFileSync(alertedFile, JSON.stringify([]));
+  alertedMatches = [];
+}
+
+// Guardar JSONs
+export function saveJSON() {
+  fs.writeFileSync(sentGoalsFile, JSON.stringify(sentEvents, null, 2));
+  fs.writeFileSync(alertedFile, JSON.stringify(alertedMatches, null, 2));
+}
+
 // Enviar mensaje a Telegram
-// ==========================
 async function send(text) {
+  const BOT_TOKEN = process.env.BOT_TOKEN;
+  const CHAT_ID = process.env.CHAT_ID;
   if (!BOT_TOKEN || !CHAT_ID) return;
+
   try {
     await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
       method: "POST",
@@ -47,84 +59,88 @@ async function send(text) {
   }
 }
 
-// ==========================
-// Revisar partidos en directo (últimos eventos por liga)
-// ==========================
+// Revisar partidos en directo cada minuto
 export async function checkMatches() {
+  const TSDB_KEY = process.env.THESPORTSDB_KEY;
+  if (!TSDB_KEY) return;
+
   try {
-    if (!TSDB_KEY) return;
+    for (const team of teams) {
+      const res = await fetch(`https://www.thesportsdb.com/api/v1/json/${TSDB_KEY}/eventslast.php?t=${encodeURIComponent(team)}`);
+      const data = await res.json();
+      const events = data.results || [];
 
-    // Para cada equipo vigilado se puede iterar; aquí ejemplo con Premier League
-    const res = await fetch(`https://www.thesportsdb.com/api/v1/json/${TSDB_KEY}/eventslast.php?id=4328`);
-    const data = await res.json();
-    const events = data.results || [];
+      for (const match of events) {
+        const home = match.strHomeTeam;
+        const away = match.strAwayTeam;
+        const matchId = match.idEvent;
 
-    for (const match of events) {
-      const home = match.strHomeTeam;
-      const away = match.strAwayTeam;
-      const matchId = match.idEvent;
+        if (!teams.includes(home) && !teams.includes(away)) continue;
 
-      if (!teams.includes(home) && !teams.includes(away)) continue;
+        // 🟢 PARTIDO INICIADO
+        const startKey = `start-${matchId}`;
+        if (!alertedMatches.includes(startKey)) {
+          await send(`🟢 PARTIDO INICIADO\n${home} vs ${away}`);
+          alertedMatches.push(startKey);
+        }
 
-      const homeScore = match.intHomeScore ?? 0;
-      const awayScore = match.intAwayScore ?? 0;
+        // 🔴 PARTIDO FINALIZADO
+        const endKey = `end-${matchId}`;
+        if (!alertedMatches.includes(endKey) && match.intHomeScore !== null) {
+          await send(`🔴 PARTIDO FINALIZADO\n${home} ${match.intHomeScore} - ${match.intAwayScore} ${away}`);
+          alertedMatches.push(endKey);
+        }
 
-      const goalKey = `goal_${matchId}_${homeScore}_${awayScore}`;
-
-      if (!sentEvents.includes(goalKey)) {
-        sentEvents.push(goalKey);
-        const msg = `⚽ Resultado actualizado\n${home} ${homeScore} - ${awayScore} ${away}`;
-        await send(msg);
+        // ⚽ GOLES (simulado con score)
+        const goalKey = `goal_${matchId}_${match.intHomeScore}_${match.intAwayScore}`;
+        if (!sentEvents.includes(goalKey) && match.intHomeScore !== null) {
+          sentEvents.push(goalKey);
+          await send(`⚽ Resultado actualizado\n${home} ${match.intHomeScore} - ${match.intAwayScore} ${away}`);
+        }
       }
     }
 
-    fs.writeFileSync(sentGoalsFile, JSON.stringify(sentEvents, null, 2));
-
+    saveJSON();
   } catch (err) {
-    console.log("Error TheSportsDB:", err);
+    console.log("Error TheSportsDB checkMatches:", err);
   }
 }
 
-// ==========================
-// Obtener partidos por fecha
-// ==========================
+// Obtener partidos por fecha (para /today y /tomorrow)
 export async function getMatchesByDate(dateStr) {
+  const TSDB_KEY = process.env.THESPORTSDB_KEY;
+  if (!TSDB_KEY) return ["No se puede consultar, falta TSDB_KEY"];
+
   try {
-    if (!TSDB_KEY) return ["No se puede consultar, falta TSDB_KEY"];
+    // Ejemplo: iterar sobre equipos para ver partidos del día
+    let matches = [];
 
-    // Se puede parametrizar por liga o por cada equipo
-    const res = await fetch(
-      `https://www.thesportsdb.com/api/v1/json/${TSDB_KEY}/eventsday.php?d=${dateStr}&l=English_Premier_League`
-    );
-    const data = await res.json();
-    const events = data.events || [];
+    for (const team of teams) {
+      const res = await fetch(`https://www.thesportsdb.com/api/v1/json/${TSDB_KEY}/eventsday.php?d=${dateStr}&t=${encodeURIComponent(team)}`);
+      const data = await res.json();
+      const events = data.events || [];
 
-    const matches = events
-      .filter(m => teams.includes(m.strHomeTeam) || teams.includes(m.strAwayTeam))
-      .map(m => {
-        const localTime = m.strTime || "TBD";
-        return `${m.strHomeTeam} vs ${m.strAwayTeam} — ${m.strLeague} — ${localTime}`;
-      });
+      matches = matches.concat(
+        events
+          .filter(m => teams.includes(m.strHomeTeam) || teams.includes(m.strAwayTeam))
+          .map(m => {
+            const localTime = m.strTime || "TBD";
+            return `${m.strHomeTeam} vs ${m.strAwayTeam} — ${m.strLeague} — ${localTime}`;
+          })
+      );
+    }
 
     return matches.length ? matches : ["No hay partidos para tus equipos"];
   } catch (err) {
-    console.log("Error TheSportsDB /getMatchesByDate:", err);
+    console.log("Error TheSportsDB getMatchesByDate:", err);
     return ["Error al consultar TheSportsDB"];
   }
 }
 
-// ==========================
-// Guardar sentGoals.json al cerrar
-// ==========================
-function saveSentEvents() {
-  fs.writeFileSync(sentGoalsFile, JSON.stringify(sentEvents, null, 2));
-}
+// Guardar JSON al cerrar el proceso
+process.on("exit", saveJSON);
+process.on("SIGINT", () => { saveJSON(); process.exit(); });
+process.on("SIGTERM", () => { saveJSON(); process.exit(); });
 
-process.on("exit", saveSentEvents);
-process.on("SIGINT", () => { saveSentEvents(); process.exit(); });
-process.on("SIGTERM", () => { saveSentEvents(); process.exit(); });
-
-// ==========================
-// Auto-check cada minuto
-// ==========================
+// Iniciar vigilancia automática
 setInterval(checkMatches, 60000);
