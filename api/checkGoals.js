@@ -1,7 +1,7 @@
 import fetch from "node-fetch";
 import fs from "fs";
 import path from "path";
-import { sentEvents, alertedMatches, saveJSON, teams } from "../goalWatcher.js";
+import { teams, sentEvents, alertedMatches, saveJSON } from "../goalWatcher.js";
 
 const dataDir = path.join(process.cwd(), "data");
 const sentGoalsFile = path.join(dataDir, "sentGoals.json");
@@ -11,53 +11,53 @@ export default async function handler(req, res) {
   try {
     const TOKEN = process.env.BOT_TOKEN;
     const CHAT_ID = process.env.CHAT_ID;
+    const TSDB_KEY = process.env.THESPORTSDB_KEY;
 
-    if (!TOKEN || !CHAT_ID) return res.sendStatus(500);
+    if (!TOKEN || !CHAT_ID || !TSDB_KEY) return res.sendStatus(500);
 
-    const resp = await fetch("https://api.sofascore.com/api/v1/sport/football/events/live");
-    const data = await resp.json();
-    const events = data.events || [];
+    // Recorremos cada equipo vigilado para ver sus últimos partidos
+    for (const team of teams) {
+      const resp = await fetch(`https://www.thesportsdb.com/api/v1/json/${TSDB_KEY}/eventslast.php?t=${encodeURIComponent(team)}`);
+      const data = await resp.json();
+      const events = data.results || [];
 
-    for (const match of events) {
-      const home = match.homeTeam.name;
-      const away = match.awayTeam.name;
-      const matchId = match.id;
+      for (const match of events) {
+        const home = match.strHomeTeam;
+        const away = match.strAwayTeam;
+        const matchId = match.idEvent;
 
-      if (!teams.includes(home) && !teams.includes(away)) continue;
+        if (!teams.includes(home) && !teams.includes(away)) continue;
 
-      const startKey = `start-${matchId}`;
-      if (match.status.type === "inprogress" && !alertedMatches.includes(startKey)) {
-        await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chat_id: CHAT_ID, text: `🟢 PARTIDO INICIADO\n${home} vs ${away}` })
-        });
-        alertedMatches.push(startKey);
-      }
+        // 🟢 PARTIDO INICIADO
+        const startKey = `start-${matchId}`;
+        if (!alertedMatches.includes(startKey)) {
+          await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chat_id: CHAT_ID, text: `🟢 PARTIDO INICIADO\n${home} vs ${away}` })
+          });
+          alertedMatches.push(startKey);
+        }
 
-      const endKey = `end-${matchId}`;
-      if (match.status.type === "finished" && !alertedMatches.includes(endKey)) {
-        await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chat_id: CHAT_ID, text: `🔴 PARTIDO FINALIZADO\n${home} ${match.homeScore.current} - ${match.awayScore.current} ${away}` })
-        });
-        alertedMatches.push(endKey);
-      }
+        // 🔴 PARTIDO FINALIZADO
+        const endKey = `end-${matchId}`;
+        if (!alertedMatches.includes(endKey) && match.intHomeScore !== null) {
+          await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: CHAT_ID,
+              text: `🔴 PARTIDO FINALIZADO\n${home} ${match.intHomeScore} - ${match.intAwayScore} ${away}`
+            })
+          });
+          alertedMatches.push(endKey);
+        }
 
-      // Goles
-      const incidentsResp = await fetch(`https://api.sofascore.com/api/v1/event/${matchId}/incidents`);
-      const incidentsData = await incidentsResp.json();
-      const incidents = incidentsData.incidents || [];
-
-      for (const inc of incidents) {
-        if (inc.incidentType === "goal") {
-          const key = `${matchId}-${inc.time}-${inc.player.name}`;
-          if (sentEvents.includes(key)) continue;
-          sentEvents.push(key);
-
-          const isPenalty = inc.details?.type === "penalty" ? " (P)" : "";
-          const msg = `⚽ GOL (${inc.time}')${isPenalty}\n${home} ${match.homeScore.current} - ${match.awayScore.current} ${away}\n⚽ ${inc.player.name}`;
+        // ⚽ GOLES (simulado con score final)
+        const goalKey = `goal_${matchId}_${match.intHomeScore}_${match.intAwayScore}`;
+        if (!sentEvents.includes(goalKey) && match.intHomeScore !== null) {
+          sentEvents.push(goalKey);
+          const msg = `⚽ Resultado actualizado\n${home} ${match.intHomeScore} - ${match.intAwayScore} ${away}`;
           await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -67,10 +67,12 @@ export default async function handler(req, res) {
       }
     }
 
+    // Guardar JSON
     saveJSON();
     res.status(200).json({ ok: true });
+
   } catch (err) {
-    console.log("⚠️ Error checkGoals:", err);
+    console.log("⚠️ Error checkGoals TheSportsDB:", err);
     res.status(500).json({ ok: false, error: err.toString() });
   }
 }
