@@ -1,0 +1,13 @@
+{
+  "name": "notigolbot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node api/command.js"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.1",
+    "axios": "^1.4.0"
+  }
+}
