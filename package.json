@@ -5,8 +5,12 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "node index.js"
   },
+  "keywords": ["telegram", "bot", "football", "soccer", "alerts"],
+  "author": "Tato Ruiz",
+  "license": "MIT",
   "dependencies": {
     "node-fetch": "^3.3.2"
   },
