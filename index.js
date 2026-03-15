@@ -29,23 +29,31 @@ function saveState(state) {
 }
 
 async function send(text) {
+
   if (!BOT_TOKEN || !CHAT_ID) return;
 
   try {
+
     await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({
         chat_id: CHAT_ID,
         text
       })
     });
+
   } catch (err) {
+
     console.log("Telegram error:", err);
+
   }
 }
 
 async function checkMatches() {
+
   try {
 
     const teams = loadTeams();
@@ -68,9 +76,15 @@ async function checkMatches() {
       if (!teams.includes(home) && !teams.includes(away)) continue;
 
       const matchId = m.id;
+      const status = m.status?.type;
 
       if (!state[matchId]) {
-        state[matchId] = { goals: [] };
+
+        state[matchId] = {
+          goals: [],
+          halftime: false,
+          finished: false
+        };
 
         await send(
 `🟢 PARTIDO INICIADO
@@ -78,6 +92,8 @@ async function checkMatches() {
 ${home} vs ${away}`
         );
       }
+
+      // ===== GOLES =====
 
       const incidentsResp = await fetch(
         `https://api.sofascore.com/api/v1/event/${matchId}/incidents`
@@ -102,25 +118,58 @@ ${home} vs ${away}`
         const homeScore = m.homeScore?.current ?? 0;
         const awayScore = m.awayScore?.current ?? 0;
 
-        const msg =
+        await send(
 `⚽ GOL ${minute}'
 
 ${home} ${homeScore} - ${awayScore} ${away}
 
-⚽ ${scorer}`;
+⚽ ${scorer}`
+        );
+      }
 
-        await send(msg);
+      // ===== DESCANSO =====
+
+      if (status === "halftime" && !state[matchId].halftime) {
+
+        const homeScore = m.homeScore?.current ?? 0;
+        const awayScore = m.awayScore?.current ?? 0;
+
+        await send(
+`⏱ DESCANSO
+
+${home} ${homeScore} - ${awayScore} ${away}`
+        );
+
+        state[matchId].halftime = true;
+      }
+
+      // ===== FINAL =====
+
+      if (status === "finished" && !state[matchId].finished) {
+
+        const homeScore = m.homeScore?.current ?? 0;
+        const awayScore = m.awayScore?.current ?? 0;
+
+        await send(
+`🏁 FINAL DEL PARTIDO
+
+${home} ${homeScore} - ${awayScore} ${away}`
+        );
+
+        state[matchId].finished = true;
       }
     }
 
     saveState(state);
 
   } catch (err) {
+
     console.log("Watcher error:", err);
+
   }
 }
 
-// comprobar cada minuto
+// revisar cada 60s
 setInterval(checkMatches, 60000);
 
 const server = http.createServer(async (req, res) => {
