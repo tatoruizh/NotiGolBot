@@ -1,165 +1,75 @@
 import fs from "fs";
 import path from "path";
 import fetch from "node-fetch";
+import { getLiveMatches, teams } from "../goalWatcher.js";
 
 const teamsFile = path.join(process.cwd(), "data", "teams.json");
-const BOT_TOKEN = process.env.BOT_TOKEN;
-
-function loadTeams() {
-  return JSON.parse(fs.readFileSync(teamsFile));
-}
-
-function saveTeams(teams) {
-  fs.writeFileSync(teamsFile, JSON.stringify(teams, null, 2));
-}
-
-async function send(chatId, text) {
-  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text
-    })
-  });
-}
 
 export default async function handler(req, res) {
-
   try {
-
-    let raw = "";
-    for await (const chunk of req) raw += chunk;
-
-    const body = JSON.parse(raw);
-
-    const chatId = body?.message?.chat?.id;
-    let text = body?.message?.text?.trim();
-
-    if (!chatId || !text) {
-      res.writeHead(200);
-      return res.end("ok");
+    let body = req.body;
+    if (!body) {
+      let raw = "";
+      for await (const chunk of req) raw += chunk;
+      body = JSON.parse(raw);
     }
 
-    // ignorar mensajes que no sean comandos
-    if (!text.startsWith("/")) {
-      res.writeHead(200);
-      return res.end("ok");
+    if (!body?.message) return res.status(200).send("ok");
+
+    const chatId = body.message.chat.id;
+    const text = body.message.text?.trim();
+    if (!text) return res.status(200).send("ok");
+
+    const BOT_TOKEN = process.env.BOT_TOKEN;
+    if (!BOT_TOKEN) return res.status(200).send("ok");
+
+    async function sendMessage(chatId, msg) {
+      try {
+        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: chatId, text: msg })
+        });
+      } catch (err) {
+        console.log("Error enviando mensaje:", err);
+      }
     }
 
-    // limpiar comandos tipo /live@NotiGolBot
-    if (text.includes("@")) {
-      const parts = text.split(" ");
-      parts[0] = parts[0].split("@")[0];
-      text = parts.join(" ");
+    let localTeams = [];
+    try {
+      if (fs.existsSync(teamsFile)) localTeams = JSON.parse(fs.readFileSync(teamsFile));
+      else fs.writeFileSync(teamsFile, JSON.stringify([]));
+    } catch {
+      fs.writeFileSync(teamsFile, JSON.stringify([]));
+      localTeams = [];
     }
 
-    let teams = loadTeams();
-
-    // ===== LIST =====
+    // ===== COMANDOS =====
     if (text === "/list") {
-
-      const msg = teams.length
-        ? "📋 Equipos vigilados:\n\n" + teams.join("\n")
-        : "No hay equipos vigilados aún";
-
-      await send(chatId, msg);
+      await sendMessage(chatId, "📋 Equipos vigilados:\n" + (localTeams.length ? localTeams.join("\n") : "No hay equipos aún"));
     }
-
-    // ===== ADD =====
     else if (text.startsWith("/add ")) {
-
-      const team = text.replace("/add ", "").trim();
-
-      if (!teams.includes(team)) {
-
-        teams.push(team);
-        saveTeams(teams);
-
-        await send(chatId, `✅ ${team} añadido`);
-
-      } else {
-
-        await send(chatId, "⚠️ Ese equipo ya está en la lista");
-      }
+      const teamToAdd = text.replace("/add ", "").trim();
+      if (!localTeams.includes(teamToAdd)) {
+        localTeams.push(teamToAdd);
+        fs.writeFileSync(teamsFile, JSON.stringify(localTeams, null, 2));
+        await sendMessage(chatId, `✅ ${teamToAdd} añadido`);
+      } else await sendMessage(chatId, `⚠️ ${teamToAdd} ya estaba en la lista`);
     }
-
-    // ===== REMOVE =====
     else if (text.startsWith("/remove ")) {
-
-      const team = text.replace("/remove ", "").trim();
-
-      teams = teams.filter(t => t !== team);
-
-      saveTeams(teams);
-
-      await send(chatId, `🗑️ ${team} eliminado`);
+      const teamToRemove = text.replace("/remove ", "").trim();
+      localTeams = localTeams.filter(t => t !== teamToRemove);
+      fs.writeFileSync(teamsFile, JSON.stringify(localTeams, null, 2));
+      await sendMessage(chatId, `🗑️ ${teamToRemove} eliminado`);
     }
-
-    // ===== LIVE =====
     else if (text === "/live") {
-
-      const resp = await fetch(
-        "https://api.sofascore.com/api/v1/sport/football/events/live"
-      );
-
-      const data = await resp.json();
-      const events = data.events || [];
-
-      const matches = events.filter(m =>
-        teams.includes(m.homeTeam.name) ||
-        teams.includes(m.awayTeam.name)
-      );
-
-      if (!matches.length) {
-
-        await send(chatId, "⚽ No hay partidos en directo de tus equipos");
-
-      } else {
-
-        let msg = "🔴 PARTIDOS EN DIRECTO\n\n";
-
-        for (const m of matches) {
-
-          const home = m.homeTeam.name;
-          const away = m.awayTeam.name;
-
-          const hs = m.homeScore?.current ?? 0;
-          const as = m.awayScore?.current ?? 0;
-
-          const minute = m.time?.current ?? "";
-
-          msg += `${home} ${hs} - ${as} ${away} (${minute}')\n`;
-        }
-
-        await send(chatId, msg);
-      }
+      const liveMatches = await getLiveMatches();
+      await sendMessage(chatId, "🔥 Partidos en directo:\n\n" + liveMatches.join("\n\n"));
     }
 
-    // ===== HELP =====
-    else {
-
-      await send(
-        chatId,
-`Comandos disponibles:
-
-/add equipo
-/remove equipo
-/list
-/live`
-      );
-    }
-
-    res.writeHead(200);
-    res.end("ok");
-
+    return res.status(200).send("ok");
   } catch (err) {
-
-    console.log("Command error:", err);
-
-    res.writeHead(200);
-    res.end("ok");
+    console.log("⚠️ Error en command handler:", err);
+    return res.status(200).send("ok");
   }
 }
