@@ -14,7 +14,6 @@ function saveTeams(teams) {
 }
 
 async function send(chatId, text) {
-
   await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
     method: "POST",
     headers: {
@@ -44,9 +43,15 @@ export default async function handler(req, res) {
       return res.end("ok");
     }
 
+    // ✅ Ignorar mensajes normales del grupo
+    if (!text.startsWith("/")) {
+      res.writeHead(200);
+      return res.end("ok");
+    }
+
     let teams = loadTeams();
 
-    // LIST
+    // ===== LIST =====
     if (text === "/list") {
 
       const msg = teams.length
@@ -56,7 +61,7 @@ export default async function handler(req, res) {
       await send(chatId, msg);
     }
 
-    // ADD
+    // ===== ADD =====
     else if (text.startsWith("/add ")) {
 
       const team = text.replace("/add ", "").trim();
@@ -70,11 +75,11 @@ export default async function handler(req, res) {
 
       } else {
 
-        await send(chatId, "Ese equipo ya está en la lista");
+        await send(chatId, "⚠️ Ese equipo ya está en la lista");
       }
     }
 
-    // REMOVE
+    // ===== REMOVE =====
     else if (text.startsWith("/remove ")) {
 
       const team = text.replace("/remove ", "").trim();
@@ -86,7 +91,7 @@ export default async function handler(req, res) {
       await send(chatId, `🗑️ ${team} eliminado`);
     }
 
-    // LIVE MATCHES
+    // ===== LIVE MATCHES =====
     else if (text === "/live") {
 
       const resp = await fetch(
@@ -126,6 +131,7 @@ export default async function handler(req, res) {
       }
     }
 
+    // ===== HELP =====
     else {
 
       await send(
