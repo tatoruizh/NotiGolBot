@@ -36,17 +36,24 @@ export default async function handler(req, res) {
     const body = JSON.parse(raw);
 
     const chatId = body?.message?.chat?.id;
-    const text = body?.message?.text?.trim();
+    let text = body?.message?.text?.trim();
 
     if (!chatId || !text) {
       res.writeHead(200);
       return res.end("ok");
     }
 
-    // ✅ Ignorar mensajes normales del grupo
+    // ignorar mensajes que no sean comandos
     if (!text.startsWith("/")) {
       res.writeHead(200);
       return res.end("ok");
+    }
+
+    // limpiar comandos tipo /live@NotiGolBot
+    if (text.includes("@")) {
+      const parts = text.split(" ");
+      parts[0] = parts[0].split("@")[0];
+      text = parts.join(" ");
     }
 
     let teams = loadTeams();
@@ -91,7 +98,7 @@ export default async function handler(req, res) {
       await send(chatId, `🗑️ ${team} eliminado`);
     }
 
-    // ===== LIVE MATCHES =====
+    // ===== LIVE =====
     else if (text === "/live") {
 
       const resp = await fetch(
